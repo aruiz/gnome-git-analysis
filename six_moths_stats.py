@@ -1,37 +1,25 @@
 #!/usr/bin/python2
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4
 """
+DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
+                   Version 2, December 2004
+
 Copyright (c) 2013 Alberto Ruiz <aruiz@gnome.org>
-All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+Everyone is permitted to copy and distribute verbatim or modified
+copies of this license document, and changing it is allowed as long
+as the name is changed.
 
-  * Redistributions of source code must retain the above copyright notice,
-    this list of conditions and the following disclaimer.
-  * Redistributions in binary form must reproduce the above copyright notice,
-    this list of conditions and the following disclaimer in the documentation
-    and/or other materials provided with the distribution.
-  * Neither the name of Pioneers of the Inevitable, Songbird, nor the names
-    of its contributors may be used to endorse or promote products derived
-    from this software without specific prior written permission.
+           DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
+  TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
-FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
+ 0. You just DO WHAT THE FUCK YOU WANT TO.
 """
 from dulwich.repo import Repo
 from datetime import datetime
 import sys
 import os
+from gnome_releases import RELEASES
 
 class SixMonthLog:
     pass
@@ -48,38 +36,59 @@ class SixMonthStats:
             except:
                 raise Exception("%s is not a valid directory" % repodir)
 
-            self.repos.append (Repo(repodir))
+        self.repos = repos
 
-        self._find_date_boundaries ()
+        #self._find_date_boundaries ()
 
     def _find_date_boundaries (self):
         for repo in self.repos:
+            repo = Repo(repo)
             master = repo.get_refs()['refs/heads/master']
             for i in repo.get_walker ([master]):
                 if self.date_oldest == None or self.date_oldest > i.commit.commit_time:
                     self.date_oldest = i.commit.commit_time
                 if self.date_newest == None or self.date_newest < i.commit.commit_time:
                     self.date_newest = i.commit.commit_time
+                del i
+            del repo
 
-    def build_mohtly_stats (self, block=6):
-        blocksize = 60*60*24*30*block
+    def _find_period (self, periods, time):
+        prev = periods[0]
+        for p in periods[1:]:
+            if time < p:
+                break
+            prev = p
+        return prev
+
+
+    def build_stats_by_periods (self, periods, filter_fn=None):
+        assert (len(periods) > 0)
+        assert (reduce(lambda x,y: x and y, map(lambda x: isinstance(x,int), periods)))
+
         lower = self.date_oldest
         upper = self.date_newest
 
-        tmp = lower
-        periods = {}
-        while tmp < upper:
-            periods[tmp] = []
-            tmp += blocksize
+        periods.sort()
+        periods = dict.fromkeys(periods, [])
 
         for repo in self.repos:
+            repo = Repo(repo)
             master = repo.get_refs()['refs/heads/master']
             for i in repo.get_walker ([master]):
+                keys = periods.keys()
+                keys.sort()
+                lower = keys[0]
+                upper = keys[-1]
                 if i.commit.commit_time < lower or i.commit.commit_time > upper:
                     continue
-                period = (((i.commit.commit_time - lower)  / blocksize) * blocksize) + lower
+                
+                period = self._find_period (periods.keys(), i.commit.commit_time)
                 author = i.commit.author.split("<")[0].strip()
+
                 periods[period].append(author)
+                del i
+            del repo
+    
         for period in periods.keys():
             periods[period] = self._plain_to_count(periods[period])
 
@@ -94,13 +103,20 @@ class SixMonthStats:
             count[author] = authors.count(author)
         return count
 
+def to_epoch (dt):
+    return int((dt - datetime.fromtimestamp (0)).total_seconds())
+
 def main ():
-  st = SixMonthStats (sys.argv[1:])
-  periods = st.build_mohtly_stats()
-  keys = periods.keys()
-  keys.sort()
-  for p in keys:
-      print len(periods[p].keys())
+    st = SixMonthStats (sys.argv[1:])
+    periods = []
+    releases = RELEASES.keys()
+
+    for r in releases:
+        periods.append(to_epoch (RELEASES[r]))
+
+    periods.sort()
+    stats = st.build_stats_by_periods (periods)
+    return
 
 if __name__ == '__main__':
   main ()
