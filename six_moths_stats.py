@@ -29,8 +29,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 """
 from dulwich.repo import Repo
+from datetime import datetime
 import sys
 import os
+
+class SixMonthLog:
+    pass
 
 class SixMonthStats:
     def __init__ (self, repos):
@@ -46,13 +50,37 @@ class SixMonthStats:
 
             self.repos.append (Repo(repodir))
 
-        self.find_date_boundaries ()
+        self._find_date_boundaries ()
 
-    def find_date_boundaries (self):
+    def _find_date_boundaries (self):
         for repo in self.repos:
             master = repo.get_refs()['refs/heads/master']
-            print repo.get_walker ([master])
+            for i in repo.get_walker ([master]):
+                if self.date_oldest == None or self.date_oldest > i.commit.commit_time:
+                    self.date_oldest = i.commit.commit_time
+                if self.date_newest == None or self.date_newest < i.commit.commit_time:
+                    self.date_newest = i.commit.commit_time
 
+    def build_mohtly_stats (self, block=6):
+        blocksize = 60*60*24*30*block
+        lower = self.date_oldest
+        upper = lower + blocksize
+
+        while lower < self.date_newest:
+            from pprint import pprint
+            pprint (contribs_by_range (lower, upper))
+            lower += blocksize
+            upper += blocksize
+
+    def contribs_by_range (self, lower, upper):
+        authors = []
+        for repo in self.repos:
+            master = repo.get_refs()['refs/heads/master']
+            for i in repo.get_walker ([master]):
+                if i.commit.commit_time < lower or i.commit.commit_time > upper:
+                    continue
+                authors.append(i.commit.author)
+        return authors
 
 def main ():
   st = SixMonthStats (sys.argv[1:])
