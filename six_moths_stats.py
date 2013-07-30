@@ -64,26 +64,43 @@ class SixMonthStats:
     def build_mohtly_stats (self, block=6):
         blocksize = 60*60*24*30*block
         lower = self.date_oldest
-        upper = lower + blocksize
+        upper = self.date_newest
 
-        while lower < self.date_newest:
-            from pprint import pprint
-            pprint (contribs_by_range (lower, upper))
-            lower += blocksize
-            upper += blocksize
+        tmp = lower
+        periods = {}
+        while tmp < upper:
+            periods[tmp] = []
+            tmp += blocksize
 
-    def contribs_by_range (self, lower, upper):
-        authors = []
         for repo in self.repos:
             master = repo.get_refs()['refs/heads/master']
             for i in repo.get_walker ([master]):
                 if i.commit.commit_time < lower or i.commit.commit_time > upper:
                     continue
-                authors.append(i.commit.author)
-        return authors
+                period = (((i.commit.commit_time - lower)  / blocksize) * blocksize) + lower
+                author = i.commit.author.split("<")[0].strip()
+                periods[period].append(author)
+        for period in periods.keys():
+            periods[period] = self._plain_to_count(periods[period])
+
+        return periods
+
+    def _plain_to_count(self, authors):
+        count = {}
+        for author in authors:
+            if author in count.keys():
+                continue
+
+            count[author] = authors.count(author)
+        return count
 
 def main ():
   st = SixMonthStats (sys.argv[1:])
+  periods = st.build_mohtly_stats()
+  keys = periods.keys()
+  keys.sort()
+  for p in keys:
+      print len(periods[p].keys())
 
 if __name__ == '__main__':
   main ()
