@@ -71,7 +71,11 @@ class SixMonthStats:
         periods.sort()
         periods = dict.fromkeys(periods, [])
 
+        tmp = 0
+        tot = len(self.repos)
         for repo in self.repos:
+            print "[%d/%d Analyzing %s]" % (tmp, tot, repo)
+            tmp += 1
             repo = Repo(repo)
             master = repo.get_refs()['refs/heads/master']
             for i in repo.get_walker ([master]):
