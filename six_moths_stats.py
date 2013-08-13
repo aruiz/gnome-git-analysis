@@ -19,6 +19,8 @@ from dulwich.repo import Repo
 from datetime import datetime
 import sys
 import os
+import json
+
 from gnome_releases import RELEASES
 
 class SixMonthLog:
@@ -60,6 +62,37 @@ class SixMonthStats:
             prev = p
         return prev
 
+    def list_all_contributors (self):
+        tmp = 1
+        tot = len(self.repos)
+        all_contribs = []
+        for repo in self.repos:
+            print >> sys.stderr, "[%d/%d Analyzing %s]" % (tmp, tot, repo)
+            tmp += 1
+            repo = Repo(repo)
+            master = repo.get_refs()['refs/heads/master']
+            for i in repo.get_walker ([master]):
+                if "<" in i.commit.author:
+                    split = i.commit.author.split("<")
+                    author = split[0]
+                    email = split[1]
+                    author = author.strip ()
+                    email = email.strip ()
+                    email = email[:-1]
+                else:
+                    author = i.commit.author
+                    email = ""
+
+                all_contribs.append((author, email))
+            del repo
+
+        tmp = []
+        for c in all_contribs:
+            if c in tmp:
+                continue
+            tmp.append(c)
+        return tmp
+
 
     def build_stats_by_periods (self, periods, filter_fn=None):
         assert (len(periods) > 0)
@@ -71,10 +104,10 @@ class SixMonthStats:
         periods.sort()
         periods = dict.fromkeys(periods, [])
 
-        tmp = 0
+        tmp = 1
         tot = len(self.repos)
         for repo in self.repos:
-            print "[%d/%d Analyzing %s]" % (tmp, tot, repo)
+            print >> sys.stderr, "[%d/%d Analyzing %s]" % (tmp, tot, repo)
             tmp += 1
             repo = Repo(repo)
             master = repo.get_refs()['refs/heads/master']
@@ -85,7 +118,9 @@ class SixMonthStats:
                 upper = keys[-1]
                 if i.commit.commit_time < lower or i.commit.commit_time > upper:
                     continue
-                
+                if filter_fn != None and not filter_fn (i):
+                    continue
+
                 period = self._find_period (periods.keys(), i.commit.commit_time)
                 author = i.commit.author.split("<")[0].strip()
 
@@ -110,6 +145,20 @@ class SixMonthStats:
 def to_epoch (dt):
     return int((dt - datetime.fromtimestamp (0)).total_seconds())
 
+def filter_out_translations (obj):
+    def check_for_po (i):
+        if i.new != None and i.new.path != None and i.new.path.endswith (".po"):
+            return False
+        if i.old != None and i.old.path != None and i.old.path.endswith (".po"):
+            return False
+        return True
+    for i in obj.changes():
+        if isinstance(i, list):
+            for c in i:
+                return check_for_po (c)
+        return check_for_po (i)
+    return True
+
 def main ():
     st = SixMonthStats (sys.argv[1:])
     periods = []
@@ -119,7 +168,8 @@ def main ():
         periods.append(to_epoch (RELEASES[r]))
 
     periods.sort()
-    stats = st.build_stats_by_periods (periods)
+    stats = st.build_stats_by_periods (periods, filter_out_translations)
+    print json.dumps(stats)
     return
 
 if __name__ == '__main__':
